@@ -11,7 +11,9 @@ def format_values(values):
     return f"A={values[0]}, B={values[1]}"
 
 
-def chart_instruction(row):
+def visual_instruction(row):
+    if row.get("layout") == "photo":
+        return f"Inspect the photo and count the objects. {row['measurement_note']}"
     default = "Use the chart measurements labeled A and B."
     return f"Find entry {row['target']} in the image. {row.get('measurement_note', default)}"
 
@@ -24,7 +26,7 @@ def run_method(method, row, respond):
     oracle_answer = "YES" if row["answer"] else "NO"
     if method == "execute":
         extraction = respond(
-            f"{chart_instruction(row)} Output only two integers in the format A=12, B=34.",
+            f"{visual_instruction(row)} Output only two integers in the format A=12, B=34.",
             image, 18, format_values(values),
         )
         translation = respond(
@@ -52,19 +54,22 @@ def run_method(method, row, respond):
         }
     use_gold_values = method in ("gold_values", "gold_both")
     use_gold_rule = method in ("gold_rule", "gold_both")
+    target = "the scene" if row.get("layout") == "photo" else f"entry {row['target']}"
     measurement = (
-        f"Use these measurements for entry {row['target']}: {format_values(values)}."
-        if use_gold_values else chart_instruction(row)
+        f"Use these measurements for {target}: {format_values(values)}."
+        if use_gold_values else visual_instruction(row)
     )
     rule = (
         f"Formal rule: {reference_rule}. GE means at least. LE means at most. GAP means A minus B."
         if use_gold_rule else f"Written rule: {rule_text}"
     )
-    prompt = f"{measurement}\n{rule}\nDoes this entry qualify under the supplied rule?"
+    subject = "this scene" if row.get("layout") == "photo" else "this entry"
+    prompt = f"{measurement}\n{rule}\nDoes {subject} qualify under the supplied rule?"
     if method == "image_only":
-        prompt = f"{chart_instruction(row)}\nDoes this entry qualify?"
+        prompt = f"{visual_instruction(row)}\nDoes {subject} qualify?"
     if method == "rule_only":
-        prompt = f"Entry: {row['target']}\n{rule}\nDoes this entry qualify?"
+        label = "Case: scene" if row.get("layout") == "photo" else f"Entry: {row['target']}"
+        prompt = f"{label}\n{rule}\nDoes {subject} qualify?"
     if method == "read_then_apply":
         answer = respond(
             prompt + "\nOutput one line in the format A=12, B=34; YES. Use YES or NO after the semicolon.",

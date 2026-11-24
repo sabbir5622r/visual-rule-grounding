@@ -200,4 +200,11 @@ def load_dataset(directory):
     group_counts = Counter((row["group"], row["language"]) for row in rows)
     if manifest["kind"] == "controlled" and set(group_counts.values()) != {len(CONDITIONS)}:
         raise ValueError("Each controlled group must contain every condition.")
+    if manifest["kind"] == "photo":
+        conditions = Counter((row["group"], row["language"], row["condition"]) for row in rows)
+        groups = {row["group"] for row in rows}
+        expected = {(group, language, condition)
+                    for group in groups for language in LANGUAGES for condition in CORE_CONDITIONS}
+        if len(groups) != manifest["groups"] or conditions.keys() != expected or set(conditions.values()) != {1}:
+            raise ValueError("Each photo group must contain one example per language and core condition.")
     return rows, manifest, sha256_file(manifest_path)

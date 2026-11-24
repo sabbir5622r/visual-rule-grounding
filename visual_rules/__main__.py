@@ -6,6 +6,7 @@ from .analysis import build_report
 from .dataset import LANGUAGES, load_dataset, make_dataset
 from .methods import METHODS, PRIMARY_METHODS
 from .models import MODEL_IDS
+from .photos import import_photos
 from .replication import import_charts
 from .runner import run_backend
 
@@ -30,6 +31,10 @@ def main():
     replication = commands.add_parser("import-charts", help="Import audited, unmodified public charts.")
     replication.add_argument("--review", type=Path, required=True)
     replication.add_argument("--output", type=Path, required=True)
+
+    photos = commands.add_parser("import-photos", help="Build a pilot from paired scene photographs.")
+    photos.add_argument("--review", type=Path, required=True)
+    photos.add_argument("--output", type=Path, required=True)
 
     validate = commands.add_parser("validate", help="Check a sealed dataset and its images.")
     validate.add_argument("--data", type=Path, required=True)
@@ -63,6 +68,9 @@ def main():
         elif args.command == "import-charts":
             manifest = import_charts(args.review, args.output)
             print(f"Imported {manifest['groups']} reviewed external charts.")
+        elif args.command == "import-photos":
+            manifest = import_photos(args.review, args.output)
+            print(f"Imported {manifest['groups']} photo pairs and {manifest['examples']} examples.")
         elif args.command == "validate":
             rows, manifest, digest = load_dataset(args.data)
             print(json.dumps({"examples": len(rows), "kind": manifest["kind"], "sha256": digest}, indent=2))
