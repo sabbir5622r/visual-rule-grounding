@@ -1,9 +1,11 @@
 MODEL_IDS = {
     "qwen": "Qwen/Qwen2.5-VL-3B-Instruct",
+    "gemma": "google/gemma-3-4b-it",
     "smolvlm": "HuggingFaceTB/SmolVLM2-2.2B-Instruct",
 }
 MODEL_REVISIONS = {
     "qwen": "66285546d2b821cf421d4f5eb2576359d3770cd3",
+    "gemma": "093f9f388b31de276ce2de164bdc2081324b9767",
     "smolvlm": "be92141c8d0ceb98596a923c308ac2bbb4a7c466",
 }
 
@@ -17,6 +19,8 @@ def prepare_inputs(processor, name, visual_tokens, prompt, image_path):
         [{"role": "user", "content": content}], add_generation_prompt=True, tokenize=False
     )
     processor_settings = {"text": [rendered], "return_tensors": "pt"}
+    if name == "gemma":
+        processor_settings["add_special_tokens"] = False
     if image_path is not None:
         with Image.open(image_path) as source:
             image = source.convert("RGB")
@@ -25,6 +29,9 @@ def prepare_inputs(processor, name, visual_tokens, prompt, image_path):
             image.thumbnail((edge, edge), Image.Resampling.LANCZOS)
             processor_settings["images"] = [[image]]
             processor.image_processor.do_image_splitting = False
+        elif name == "gemma":
+            processor_settings["images"] = [[image]]
+            processor_settings["do_pan_and_scan"] = False
         else:
             processor_settings["images"] = [image]
     return processor(**processor_settings)
@@ -37,6 +44,8 @@ class VisionLanguageModel:
 
         if not torch.cuda.is_available():
             raise RuntimeError("Enable a CUDA GPU, or use the oracle backend for a CPU workflow check.")
+        if name == "gemma" and visual_tokens != 256:
+            raise ValueError("Gemma 3 uses 256 visual tokens per image. Pass --visual-tokens 256.")
         model_id = MODEL_IDS[name]
         processor_settings = {}
         if name == "qwen":
