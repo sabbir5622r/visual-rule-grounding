@@ -70,10 +70,10 @@ def run_method(method, row, respond):
             prompt + "\nOutput one line in the format A=12, B=34; YES. Use YES or NO after the semicolon.",
             image, 25, f"{format_values(values)}; {oracle_answer}",
         )
-        predicted_values, separator, decision = answer.partition(";")
+        predicted_values, separator, decision = answer.rpartition(";")
         parsed_values = parse_values(predicted_values)
         return {
-            "answer": parse_decision(decision) if separator else None,
+            "answer": parse_decision(decision) if separator and parsed_values is not None else None,
             "raw": {"decision": answer},
             "value_exact": parsed_values == tuple(values),
             "value_parse_valid": parsed_values is not None,

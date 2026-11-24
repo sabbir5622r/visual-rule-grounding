@@ -11,6 +11,9 @@ from .methods import run_method
 from .models import MODEL_IDS, MODEL_REVISIONS, VisionLanguageModel
 
 
+MODALITY_COUNTERS = ("image_text_calls", "text_only_calls", "image_text_cache_hits", "text_only_cache_hits")
+
+
 def connect(path):
     connection = sqlite3.connect(path, timeout=30)
     connection.execute("PRAGMA journal_mode=DELETE")
@@ -110,6 +113,7 @@ def infer_rows(args, connection, rows, methods, manifest, revision, started):
             "seconds": round(time.monotonic() - evaluation_started, 5),
             "model_calls": calls["model"] - prior_calls["model"],
             "cache_hits": calls["cached"] - prior_calls["cached"],
+            **{key: calls[key] - prior_calls[key] for key in MODALITY_COUNTERS},
         }
         with connection:
             connection.execute(
@@ -122,7 +126,10 @@ def infer_rows(args, connection, rows, methods, manifest, revision, started):
             print(
                 f"{expected - len(remaining) + added}/{expected} | "
                 f"{elapsed / added:.2f} s per new evaluation | "
-                f"{calls['model']} uncached model calls | {calls['cached']} cache hits",
+                f"{calls['image_text_calls']} image+text calls | "
+                f"{calls['text_only_calls']} text-only calls | "
+                f"cache hits: {calls['image_text_cache_hits']} image+text, "
+                f"{calls['text_only_cache_hits']} text-only",
                 flush=True,
             )
     gpu_peak = round(model.torch.cuda.max_memory_allocated(0) / (1024 ** 3), 3) if model else None
@@ -134,6 +141,7 @@ def infer_rows(args, connection, rows, methods, manifest, revision, started):
         "prediction_seconds": round(time.monotonic() - inference_started, 2),
         "uncached_model_calls": calls["model"],
         "cache_hits": calls["cached"],
+        **{key: calls[key] for key in MODALITY_COUNTERS},
         "peak_allocated_gib": gpu_peak,
     }
 
@@ -141,14 +149,17 @@ def infer_rows(args, connection, rows, methods, manifest, revision, started):
 def cached_response(connection, model, directory, images, calls, prompt, image, output_tokens, oracle):
     if model is None:
         return oracle
+    modality = "image_text" if image is not None else "text_only"
     identity = json.dumps([prompt, images[image] if image else None, output_tokens], ensure_ascii=False)
     key = hashlib.sha256(identity.encode("utf-8")).hexdigest()
     saved = connection.execute("SELECT text FROM response WHERE key=?", (key,)).fetchone()
     if saved is not None:
         calls["cached"] += 1
+        calls[f"{modality}_cache_hits"] += 1
         return saved[0]
     answer = model.respond(prompt, directory / image if image else None, output_tokens)
     with connection:
         connection.execute("INSERT OR IGNORE INTO response VALUES (?, ?)", (key, answer))
     calls["model"] += 1
+    calls[f"{modality}_calls"] += 1
     return answer
