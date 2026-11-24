@@ -50,15 +50,31 @@ class VisionLanguageModel:
         processor_settings = {}
         if name == "qwen":
             processor_settings = {"min_pixels": 128 * 28 * 28, "max_pixels": visual_tokens * 28 * 28, "use_fast": True}
+        self.gpu_indices = (0,)
+        self.precision = "float16"
+        load_settings = {"dtype": torch.float16, "device_map": {"": 0}}
+        if name == "gemma":
+            if torch.cuda.device_count() < 2:
+                raise RuntimeError("Select Kaggle's GPU T4 x2 accelerator to run Gemma in FP32.")
+            self.gpu_indices = (0, 1)
+            self.precision = "float32"
+            load_settings = {
+                "dtype": torch.float32,
+                "device_map": "balanced",
+                "max_memory": {index: "13GiB" for index in self.gpu_indices},
+            }
         self.processor = AutoProcessor.from_pretrained(model_id, revision=revision, **processor_settings)
         self.model = AutoModelForImageTextToText.from_pretrained(
-            model_id, revision=revision, dtype=torch.float16, device_map={"": 0},
-            attn_implementation="sdpa",
+            model_id, revision=revision, attn_implementation="sdpa", **load_settings
         ).eval()
+        if name == "gemma":
+            mapped_devices = {str(device).removeprefix("cuda:") for device in self.model.hf_device_map.values()}
+            if mapped_devices != {"0", "1"}:
+                raise RuntimeError(f"Gemma FP32 must be placed on both GPUs. Actual placement: {sorted(mapped_devices)}")
         self.name = name
         self.visual_tokens = visual_tokens
         self.torch = torch
-        self.device = torch.device("cuda:0")
+        self.device = self.model.device
 
     def respond(self, prompt, image_path, output_tokens):
         inputs = prepare_inputs(

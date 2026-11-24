@@ -91,6 +91,8 @@ def infer_rows(args, connection, rows, methods, manifest, revision, started):
     if not remaining:
         return {"expected": expected, "completed": expected, "new": 0}
     model = None if args.backend == "oracle" else VisionLanguageModel(args.backend, revision, args.visual_tokens)
+    if model:
+        print(f"Model precision: {model.precision} | CUDA devices: {model.gpu_indices}", flush=True)
     inference_started = time.monotonic()
     calls = Counter()
     added = 0
@@ -132,7 +134,14 @@ def infer_rows(args, connection, rows, methods, manifest, revision, started):
                 f"{calls['text_only_cache_hits']} text-only",
                 flush=True,
             )
-    gpu_peak = round(model.torch.cuda.max_memory_allocated(0) / (1024 ** 3), 3) if model else None
+    gpu_memory = {}
+    if model:
+        for index in model.gpu_indices:
+            cuda = model.torch.cuda
+            gpu_memory[f"cuda:{index}"] = {
+                "peak_allocated_gib": round(cuda.max_memory_allocated(index) / (1024 ** 3), 3),
+                "peak_reserved_gib": round(cuda.max_memory_reserved(index) / (1024 ** 3), 3),
+            }
     return {
         "expected": expected,
         "completed": expected - len(remaining) + added,
@@ -142,7 +151,10 @@ def infer_rows(args, connection, rows, methods, manifest, revision, started):
         "uncached_model_calls": calls["model"],
         "cache_hits": calls["cached"],
         **{key: calls[key] for key in MODALITY_COUNTERS},
-        "peak_allocated_gib": gpu_peak,
+        "model_precision": model.precision if model else None,
+        "gpus_used": len(gpu_memory),
+        "gpu_memory": gpu_memory,
+        "peak_allocated_gib": max((peak["peak_allocated_gib"] for peak in gpu_memory.values()), default=None),
     }
 
 
