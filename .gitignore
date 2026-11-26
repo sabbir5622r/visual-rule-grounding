@@ -7,3 +7,4 @@ dist/
 data/
 runs/
 .ipynb_checkpoints/
+results/
