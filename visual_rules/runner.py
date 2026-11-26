@@ -8,7 +8,8 @@ import time
 
 from .dataset import load_dataset, sha256_file
 from .methods import run_method
-from .models import MODEL_IDS, MODEL_REVISIONS, VisionLanguageModel
+from .models import MODEL_IDS, MODEL_REVISIONS
+from .models import load_vision_language_model as VisionLanguageModel
 
 
 MODALITY_COUNTERS = ("image_text_calls", "text_only_calls", "image_text_cache_hits", "text_only_cache_hits")
