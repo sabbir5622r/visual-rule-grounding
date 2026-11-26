@@ -206,6 +206,40 @@ def replay_execution(predictions, examples):
         yield row, scores, estimated_counts is not None
 
 
+def summarize_conditions(selected, identity, method, tables):
+    pairs = defaultdict(dict)
+    for row in selected:
+        pairs[row["group"]][row["condition"]] = row
+    for condition in CORE_CONDITIONS:
+        rows = [group[condition] for group in pairs.values()]
+        tables["condition_results.csv"].append({
+            **identity, "method": method, "condition": condition, "examples": len(rows),
+            "accuracy": mean([row["answer"] is row["gold"] for row in rows]),
+            "valid_answer_rate": mean([row["answer"] is not None for row in rows]),
+        })
+    scores = [sum(row["answer"] is row["gold"] for row in group.values()) for group in pairs.values()]
+    for correct in range(len(CORE_CONDITIONS) + 1):
+        tables["pair_outcomes.csv"].append({
+            **identity, "method": method, "correct_conditions": correct,
+            "pairs": scores.count(correct), "fraction": scores.count(correct) / len(scores),
+        })
+    for condition in CORE_CONDITIONS[1:]:
+        for expected_flip in (False, True):
+            matched = [
+                (group["original"], group[condition]) for group in pairs.values()
+                if (group["original"]["gold"] is not group[condition]["gold"]) == expected_flip
+            ]
+            if not matched:
+                continue
+            valid = [(first["answer"], second["answer"]) for first, second in matched
+                     if first["answer"] is not None and second["answer"] is not None]
+            tables["decision_flips.csv"].append({
+                **identity, "method": method, "condition": condition, "expected_flip": expected_flip,
+                "pairs": len(matched), "valid_pairs": len(valid),
+                "valid_consistent_rate": sum((first is not second) == expected_flip for first, second in valid) / len(matched),
+            })
+
+
 def summarize_run(run, rng, repeats):
     tables = defaultdict(list)
     clusters = run["clusters"]
@@ -216,6 +250,7 @@ def summarize_run(run, rng, repeats):
         count_outputs = {}
         for method in METHODS:
             selected = [row for row in predictions if row["language"] == language and row["method"] == method]
+            summarize_conditions(selected, identity, method, tables)
             case_metrics, pair_scores = calculate_scores(selected, clusters)
             low, high = confidence_interval(capture_means(pair_scores, clusters), rng, repeats)
             tables["main_results.csv"].append({
